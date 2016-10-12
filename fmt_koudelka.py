@@ -3,6 +3,8 @@
 from inc_noesis import *
 
 import noesis
+import struct
+
 
 #rapi methods should only be used during handler callbacks
 import rapi
@@ -45,12 +47,13 @@ def registerNoesisTypes():
 	handle = noesis.register("Koudelka Monster Archive BIM.AR", ".AR")
 	noesis.setHandlerTypeCheck(handle, koudelkaARCheck)
 	noesis.setHandlerExtractArc(handle, extractAR)
+	#noesis.setHandlerLoadModel(handle, koudelkaReadAR)
 
 	handle = noesis.register("Koudelka Effects .PMF", ".PMF")
 	noesis.setHandlerTypeCheck(handle, koudelkaPMFHeaderCheck)
 	noesis.setHandlerLoadRGBA(handle, koudelkaReadPMF)
 
-	noesis.logPopup()
+	#noesis.logPopup()
 	#print("The log can be useful for catching debug prints from preview loads.\nBut don't leave it on when you release your script, or it will probably annoy people.")
 	return 1
 
@@ -139,9 +142,7 @@ def SDRParser(bs):
 	
 	textures.append(drawTexture(texW, texH, colors, cluts))
 	materials.append(NoeMaterial("mat_0", textures[0].name))
-	
 
-	ctx = rapi.rpgCreateContext()
 
 	# Groups section
 	groups = []
@@ -677,9 +678,8 @@ def koudelkaReadFT4(data, texList):
 		texturesInfos.append(i)
 		#print("texI : "+repr(i))
 
-	#print("cluts : "+str(bs.getOffset())+" -> "+str(bs.getSize()))
-	# cluts
 
+	# cluts
 	texW = 128
 	texH = 512
 	cluts = []
@@ -719,22 +719,33 @@ def koudelkaARCheck(data):
 		return 0
 	return 1
 def extractAR(fileName, fileLen, justChecking):
-	print("//-----------------------------------------------")
 	with open(fileName, "rb") as f:
+		if justChecking:
+			return 1
+
 		nums = noeUnpack("3I", f.read(12))
 		for i in range (0, 124):
 			nums = noeUnpack("8B", f.read(8))
 
-		#while True:
-		#	b = noeUnpack("4s", f.read(4))
-		#	if b == KOUDELKA_MODEL_HEADER:
 
-
-			
-		if justChecking:
-			return 1
-			
-		baseName = rapi.getExtensionlessName(rapi.getLocalFileName(fileName)).lower()
+		modelIndex = 1
+		print("Extracting files from archive.")
+		# iterative search
+		while True:
+			if f.tell()+4 < fileLen:
+				rep = f.tell()
+				b = f.read(4)
+				if b == KOUDELKA_MODEL_HEADER:
+					numBones, numMesh, footerPtr = noeUnpack("2HI", f.read(8))
+					footerPtr += f.tell()+4
+					exName = "MonsterModel_"+str(modelIndex)+".SDR"
+					f.seek(rep)
+					compData = f.read(int(footerPtr-rep))
+					print("Writing", exName)
+					rapi.exportArchiveFile(exName, compData)
+					modelIndex += 1
+			else:
+				break
 	return 1
 
 def koudelkaPMFHeaderCheck(data):
