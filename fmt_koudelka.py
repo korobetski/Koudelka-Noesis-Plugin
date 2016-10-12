@@ -14,57 +14,99 @@ def registerNoesisTypes():
 	noesis.setHandlerTypeCheck(handle, koudelkaModelHeaderCheck)
 	noesis.setHandlerLoadModel(handle, koudelkaReadModel)
 
-	handle = noesis.register("Koudelka .BDT", ".BDT")
+	handle = noesis.register("Koudelka Model Package .SDP", ".SDP")
+	noesis.setHandlerTypeCheck(handle, koudelkaSDPHeaderCheck)
+	noesis.setHandlerLoadModel(handle, koudelkaReadSDP)
+
+	handle = noesis.register("Koudelka Battle Arenas .BDT", ".BDT")
 	noesis.setHandlerTypeCheck(handle, koudelkaBDTHeaderCheck)
 	noesis.setHandlerLoadRGBA(handle, koudelkaReadBDT)
 
-	handle = noesis.register("Koudelka .MDT", ".MDT")
+	handle = noesis.register("Koudelka Environment Textures .MDT", ".MDT")
 	noesis.setHandlerTypeCheck(handle, koudelkaMDTHeaderCheck)
 	noesis.setHandlerLoadRGBA(handle, koudelkaReadMDT)
 
+	handle = noesis.register("Koudelka Textures .TEX", ".TEX")
+	noesis.setHandlerTypeCheck(handle, koudelkaTEXHeaderCheck)
+	noesis.setHandlerLoadRGBA(handle, koudelkaReadTEX)
+	
+	handle = noesis.register("Koudelka Greyscale Textures .TX4", ".TX4")
+	noesis.setHandlerTypeCheck(handle, koudelkaTX4HeaderCheck)
+	noesis.setHandlerLoadRGBA(handle, koudelkaReadTX4)
+	
+	handle = noesis.register("Koudelka Font .FT4", ".FT4")
+	noesis.setHandlerTypeCheck(handle, koudelkaFT4HeaderCheck)
+	noesis.setHandlerLoadRGBA(handle, koudelkaReadFT4)
+
+	handle = noesis.register("Koudelka Textures .TX8", ".TX8;.KD8")
+	noesis.setHandlerTypeCheck(handle, koudelkaTX8HeaderCheck)
+	noesis.setHandlerLoadRGBA(handle, koudelkaReadTX8)
+
 	handle = noesis.register("Koudelka Monster Archive BIM.AR", ".AR")
 	noesis.setHandlerTypeCheck(handle, koudelkaARCheck)
-	#noesis.setHandlerExtractArc(handle, extractAR)
+	noesis.setHandlerExtractArc(handle, extractAR)
+
+	handle = noesis.register("Koudelka Effects .PMF", ".PMF")
+	noesis.setHandlerTypeCheck(handle, koudelkaPMFHeaderCheck)
+	noesis.setHandlerLoadRGBA(handle, koudelkaReadPMF)
 
 	noesis.logPopup()
 	#print("The log can be useful for catching debug prints from preview loads.\nBut don't leave it on when you release your script, or it will probably annoy people.")
 	return 1
 
 KOUDELKA_MODEL_HEADER = b"0112"
+KOUDELKA_SDP_HEADER = b"SDR_PACK"
 KOUDELKA_BDT_HEADER = b"bdt0"
 KOUDELKA_MDT_HEADER = b"mdt0"
+KOUDELKA_TEX_HEADER = 0xFFFFFFFF
+KOUDELKA_TX4_HEADER = b"TX4"
+KOUDELKA_FT4_HEADER = b"FT40"
+KOUDELKA_TX8_HEADER = b"TX8"
+KOUDELKA_PMF_HEADER = b"0117"
 
-#check if it's this type based on the data
+def koudelkaSDPHeaderCheck(data):
+	if len(data) < 8:
+		return 0
+	bs = NoeBitStream(data)
+	header = bs.read("8s")[0]
+	if header != KOUDELKA_SDP_HEADER:
+		return 0
+	return 1
+def koudelkaReadSDP(data, mdlList):
+	bs = NoeBitStream(data)
+	header = bs.read("8s")[0]
+	nums = bs.read("2HI")
+	print(repr(nums))
+	numModels = nums[2]
+
+	for i in range(0, numModels):
+		n = bs.read("2H")
+
+	for i in range(0, numModels):
+		header = bs.read("4s")[0]
+		if header == KOUDELKA_MODEL_HEADER:
+			mdl = SDRParser(bs)
+			mdlList.append(mdl)
+
+	return 1
+
 def koudelkaModelHeaderCheck(data):
 	if len(data) < 8:
 		return 0
 	bs = NoeBitStream(data)
-
 	header = bs.read("4s")[0]
 	if header != KOUDELKA_MODEL_HEADER:
 		return 0
-
 	return 1
-def koudelkaReadModel(data, mdlList):
-	bs = NoeBitStream(data)
-	#print("file size : "+str(bs.getSize()))
-	header = bs.read("4s")[0]
+def SDRParser(bs):
 	numBones = bs.read('H')[0]
 	#print("numBones ? : "+str(numBones))
 	numMesh = bs.read('H')[0]
 	#print("numMesh ? : "+str(numMesh))
-
-
-	footerPtr = bs.read('I')[0] # maybe somthing interesting in the footer
+	footerPtr = bs.getOffset()+bs.read('I')[0]+4 # maybe somthing interesting in the footer
 	#print("footerPtr : "+str(footerPtr))
 
-	ptr = bs.getOffset()
-	bs.setOffset(footerPtr)
-	nums = bs.read('6h') # ?
-	#print("nums : "+str(nums))
-
 	# Texture section
-	bs.setOffset(ptr)
 	num2 = bs.read('H')[0] # 1 number of pallets ?
 	#print("num2 : "+str(num2))
 	texW = bs.read('H')[0] # tex width
@@ -117,30 +159,28 @@ def koudelkaReadModel(data, mdlList):
 			idxList = []
 			uvList = []
 			normalList = []
+			wList = []
 			for j in range(0, g.numVertex):
 				v = KVertex(texW, texH)
 				v.hydrate(bs)
 				vertices.append(v)
-				#posList.append(v.position)
-				#posList.append(v.position + g.offset)
-				#uvList.append(NoeVec3())
-				#normalList.append(v.normals)
 
 			if g.numPoly[0] > 0: # triangles
 				for j in range (0, int(g.numPoly[0])):
 					poly = KPoly(True)
 					poly.hydrate(bs, g.infos[1])
-					poly.addIdx(idxList, posList, g, vertices, uvList, texW, texH, normalList)
+					poly.addIdx(idxList, posList, g, vertices, uvList, texW, texH, normalList, wList)
 
 			if g.numPoly[1] > 0: # quads
 				for j in range (0, int(g.numPoly[1])):
 					poly = KPoly(False)
 					poly.hydrate(bs, g.infos[1])
-					poly.addIdx(idxList, posList, g, vertices, uvList, texW, texH, normalList)
+					poly.addIdx(idxList, posList, g, vertices, uvList, texW, texH, normalList, wList)
 
 			mesh = NoeMesh(idxList, posList, g.name, "mat_0")
-			mesh.uvs = uvList
-			mesh.normals = normalList
+			mesh.setUVs(uvList)
+			mesh.setWeights(wList)
+			#mesh.setNormals(normalList)
 			meshes.append(mesh)	
 	
 	bones = []
@@ -153,13 +193,26 @@ def koudelkaReadModel(data, mdlList):
 
 	NMM = NoeModelMaterials(textures, materials)
 	mdl = NoeModel(meshes, bones, anims, NMM)
-	mdlList.append(mdl)
+
+	ptr = bs.getOffset()
+	#print(str(ptr)+' -> '+str(footerPtr)+'->'+str(bs.getSize()))
+	#nums = bs.read('6h') # ?
+	#print("nums : "+str(nums))
+	#bs.setOffset(ptr)
+
+	#print("footerPtr : "+str(footerPtr)+' - curPtr : '+str(ptr))
 
 
 	#nums = bs.read('4h') # 
 	#print("nums : "+str(nums))
 	#print("//-----------------------------------------------")
-
+	bs.setOffset(footerPtr)
+	return mdl
+def koudelkaReadModel(data, mdlList):
+	bs = NoeBitStream(data)
+	header = bs.read("4s")[0]
+	mdl = SDRParser(bs)
+	mdlList.append(mdl)
 	return 1
 
 class KPoly():
@@ -174,35 +227,35 @@ class KPoly():
 		self.alpha = 1
 	def hydrate(self, bs, size):
 		if self.isTri:
-			self.h = bs.read("2b")
+			self.h = bs.read("2B")
 			self.vertices = bs.read("3H") # vertices indexes
 		else :
 			self.h = bs.read("4b")
 			self.vertices = bs.read("4H") # vertices indexes
 
 		if self.h[0] != 1:
-			self.normals = bs.read('8b') # normals ?
+			self.normals = bs.read('8B') # normals ?
 		else:
-			self.alpha = 0 # kind of hitbox
+			self.alpha = 0 # ?
 		
 		if self.h[0] == 44:
 			footer = bs.read('4b')
-			self.uvs = bs.read('8b')
+			self.uvs = bs.read('8B')
 		elif self.h[0] == 45:
 			footer = bs.read('4b')
-			self.uvs = bs.read('8b')
+			self.uvs = bs.read('8B')
 		elif self.h[0] == 12:
 			footer = bs.read('4b')
-			self.uvs = bs.read('8b')
+			self.uvs = bs.read('8B')
 		elif self.h[0] == 13:
 			footer = bs.read('4b')
-			self.uvs = bs.read('8b')
+			self.uvs = bs.read('8B')
 		else:
-			self.uvs = bs.read('8b')
+			self.uvs = bs.read('8B')
 			footer = bs.read('4b')
 
 		#print("h : "+str(self.h)+"	coords : "+str(self.vertices)+"		normals : "+str(self.normals)+"		uvs : "+str(self.uvs)+"		footer : "+str(footer))
-	def addIdx(self, idxList, posList, group, vertices, uvList, texW, texH, normalList):
+	def addIdx(self, idxList, posList, group, vertices, uvList, texW, texH, normalList, wList):
 		if self.alpha == 1:
 			if self.isTri:
 				idxList.append(len(posList))
@@ -218,6 +271,10 @@ class KPoly():
 				normalList.append(vertices[self.vertices[2]].normals)
 				normalList.append(vertices[self.vertices[1]].normals)
 				normalList.append(vertices[self.vertices[0]].normals)
+
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
 			else :
 				idxList.append(len(posList))
 				posList.append(vertices[self.vertices[2]].position + group.offset)
@@ -244,16 +301,30 @@ class KPoly():
 				normalList.append(vertices[self.vertices[1]].normals)
 				normalList.append(vertices[self.vertices[2]].normals)
 				normalList.append(vertices[self.vertices[3]].normals)
+
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
 		else:
 			if self.isTri:
 				posList.append(vertices[self.vertices[2]].position + group.offset)
 				posList.append(vertices[self.vertices[1]].position + group.offset)
 				posList.append(vertices[self.vertices[0]].position + group.offset)
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
 			else :
 				posList.append(vertices[self.vertices[3]].position + group.offset)
 				posList.append(vertices[self.vertices[2]].position + group.offset)
 				posList.append(vertices[self.vertices[1]].position + group.offset)
 				posList.append(vertices[self.vertices[0]].position + group.offset)
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
+				wList.append(NoeVertWeight([group.index], [1]))
 class KGroup():
 	def __init__(self):
 		self.index = 0
@@ -264,32 +335,26 @@ class KGroup():
 		self.parentName = None
 		self.numPoly = []
 		self.offset = NoeVec3()
-		self.infos = []
+		self.infos = [] 
 	def hydrate(self, bs):
 		self.index = bs.read('H')[0]
 		#print("group index : "+str(self.index))
 		self.numVertex = bs.read('H')[0]
 		#print("numVertex : "+str(self.numVertex))
-
-		self.infos = bs.read('2b') 
-		#print("nums : "+str(nums))
-
+		self.infos = bs.read('2b') # Mode ?
+		#print("infos : "+str(self.infos))
 		self.numPoly = bs.read('2H')
 		#print("numPoly : "+str(self.numPoly))
-
 		self.parentId = bs.read('h')[0] # -1
 		#print("parentId : "+str(self.parentId))
-
 		self.offset = NoeVec3(bs.read('3i')) 
 		#print("nums : "+str(nums))
-
 		nums3 = bs.read('4h')
-		#print("nums : "+str(nums))
+		#print("nums3 : "+str(nums3)) # ?? 1200, 1200, {0, -1}, {0-20}
 		self.name = str(bs.readBytes(8))
 		#print("group name : "+str(self.name))
-
 		nums4 = bs.read('6i')
-		#print("nums : "+str(nums))
+		#print("nums4 : "+str(nums4)) # padding ?
 		#print("group index : "+str(self.index)+"	name :"+str(self.name)+"	numVertex : "+str(self.numVertex)+"	numPoly : "+str(self.numPoly)+"	parentId : "+str(self.parentId)+"	infos : "+str(self.infos)+"	offset ? : "+str(self.offset)+"	nums3 : "+str(nums3)+"	padding : "+str(nums4))
 		#print("//------------"+str(bs.getOffset()))
 	
@@ -298,8 +363,7 @@ class KGroup():
 			if groups[self.parentId] != None:
 				self.parent = groups[self.parentId]
 				self.parentName = groups[self.parentId].name
-				#self.offset = self.offset + self.parent.offset
-				self.offset = NoeVec3([self.offset[0] + self.parent.offset[0], self.offset[1] + self.parent.offset[1], self.offset[2] + self.parent.offset[2]])
+				self.offset = self.offset + self.parent.offset
 class KVertex():
 	def __init__(self, texW, texH):
 		self.position = NoeVec3()
@@ -312,11 +376,10 @@ class KVertex():
 		coords = bs.read('3h')
 		self.position = NoeVec3(coords)
 		num = bs.read('1h')[0]
-		nums = bs.read('6b') # Ax, ay, az, bx, by, bz
+		nums = bs.read('6B') # Ax, ay, az, bx, by, bz
 		num2 = bs.read('1h')[0]
-		self.normals = NoeVec3([ nums[1] * nums[5] - nums[4] * nums[2], nums[2] * nums[3] - nums[5] * nums[0], nums[0] * nums[4] - nums[3] * nums[1]])
+		#self.normals = NoeVec3([ nums[1] * nums[5] - nums[4] * nums[2], nums[2] * nums[3] - nums[5] * nums[0], nums[0] * nums[4] - nums[3] * nums[1]])
 		#print("coords : "+str(coords)+"	num : "+str(num)+"	nums : "+str(nums)+"	num2 : "+str(num2))
-
 
 def koudelkaBDTHeaderCheck(data):
 	if len(data) < 8:
@@ -386,7 +449,7 @@ def koudelkaMDTHeaderCheck(data):
 	return 1
 def koudelkaReadMDT(data, texList):
 	bs = NoeBitStream(data)
-	print("file size : "+str(bs.getSize()))
+	#print("file size : "+str(bs.getSize()))
 	nums = bs.read("I2BH4B2H")
 	print(str(nums))
 
@@ -441,6 +504,212 @@ def koudelkaReadMDT(data, texList):
 
 	return 1
 
+def koudelkaTEXHeaderCheck(data):
+	if len(data) < 8:
+		return 0
+	bs = NoeBitStream(data)
+	header = bs.read("I")[0]
+	if (header != KOUDELKA_TEX_HEADER):
+		return 0
+	return 1
+def koudelkaReadTEX(data, texList):
+	bs = NoeBitStream(data)
+	nums = bs.read("I8H")
+	print(repr(nums))
+	texW = nums[6]
+	texH = nums[7]
+	# colors
+	colors = []
+	for i in range (0, 256):
+		colors.append(bs.readBits(16))
+	# cluts
+	cluts = []
+	for i in range (0, texW):
+		for j in range (0, texH):
+			cluts.append(bs.read('B')[0])
+	texList.append(drawTexture(texW, texH, colors, cluts))
+	return 1
+
+def koudelkaTX8HeaderCheck(data):
+	if len(data) < 8:
+		return 0
+	bs = NoeBitStream(data)
+	tx8Check = bs.read("3s")[0]
+	if (tx8Check != KOUDELKA_TX8_HEADER):
+		return 0
+	return 1
+def koudelkaReadTX8(data, texList):
+	bs = NoeBitStream(data)
+	h = bs.read("4B")
+	if h[3] == 0x20:
+		nums = bs.read("2B5H")
+		print("TX8 : "+repr(nums))
+		texW = nums[3]
+		texH = nums[4]
+		# colors
+		colors = []
+		for i in range (0, 256):
+			colors.append(bs.readBits(16))
+		# cluts
+		cluts = []
+		numParts = int(texH / 256)
+		parts = []
+		for k in range (0, numParts):
+			parts.append([])
+			for i in range (0, texW):
+				for j in range (0, 256):
+					parts[k].append(bs.read('B')[0])
+
+		for j in range (0, 256):
+			for k in range (0, numParts):
+				for i in range (0, texW):
+					cluts.append(parts[k][i+j*texW])
+
+		texList.append(drawTexture(texW*numParts, 256, colors, cluts))
+	elif h[3] == 0x31:
+		nums = bs.read("2B5H")
+		print("KD8 : "+repr(nums))
+		texW = nums[3]
+		texH = nums[4]
+		pallets = []
+		for k in range (0, 4):
+			# colors
+			colors = []
+			for i in range (0, 256):
+				colors.append(bs.readBits(16))
+			pallets.append(colors)
+
+		# cluts
+		cluts = []
+		for i in range (0, texW):
+			for j in range (0, texH):
+				cluts.append(bs.read('B')[0])
+		
+		for k in range (0, 4):
+			pixmap = bytearray()
+			for j in range(0, len(cluts)):
+				pixmap += bytearray(color16to32(pallets[k][int(cluts[j])]))
+
+			tex = NoeTexture("_tex_"+str(k), texW, texH, pixmap)
+			texList.append(tex)
+
+	return 1
+
+def koudelkaTX4HeaderCheck(data):
+	if len(data) < 8:
+		return 0
+	bs = NoeBitStream(data)
+	tx4Check = bs.read("3s")[0]
+	if (tx4Check != KOUDELKA_TX4_HEADER):
+		return 0
+	return 1
+def TX4Parser(bs):
+	basePtr = bs.getOffset()
+	#print(str(basePtr)+'-'+str(bs.getSize()))
+	nums = bs.read("I2B5H")
+	print("TX4 : "+repr(nums))
+	ptrClut = nums[1]
+	if nums[2] > 0:
+		texW = nums[2]
+		texH = nums[4]
+	else:
+		texW = nums[4]
+		texH = nums[5]
+
+
+	numColors = basePtr+(ptrClut - int(bs.getOffset()))
+	print("numColors : "+str(numColors))
+	# colors
+	colors = []
+	for i in range (0, numColors):
+		colors.append(bs.read('B')[0])
+
+	# cluts
+	cluts = []
+	if ptrClut == int(bs.getSize()):
+		cluts = colors
+		miss = texW*texH - len(cluts)
+		if miss > 0:
+			for i in range (0, miss):
+				cluts.append(0)
+	else :
+		for i in range (0, texW):
+			for j in range (0, texH):
+				cluts.append(bs.read('B')[0])
+	
+	pixmap = bytearray()
+	for j in range(0, len(cluts)):
+		pixmap += bytearray([ cluts[j], cluts[j], cluts[j], 255 ])
+	tex = NoeTexture("_tex_"+str(0), texW, texH, pixmap)
+	return tex
+def koudelkaReadTX4(data, texList):
+	bs = NoeBitStream(data)
+	texList.append(TX4Parser(bs))
+	while bs.getOffset() + 2000 < bs.getSize():
+		bs.seek(2000, NOESEEK_REL)
+		texList.append(TX4Parser(bs))
+	return 1
+
+def koudelkaFT4HeaderCheck(data):
+	if len(data) < 8:
+		return 0
+	bs = NoeBitStream(data)
+	ft4Check = bs.read("4s")[0]
+	if (ft4Check != KOUDELKA_FT4_HEADER):
+		return 0
+	return 1
+def koudelkaReadFT4(data, texList):
+	bs = NoeBitStream(data)
+	nums = bs.read("I2B5H")
+	#print("FT4 : "+repr(nums))
+	numTex = nums[1]
+	# colors
+	colors = []
+	for i in range (0, 32):
+		colors.append(bs.read('B')[0])
+
+	#print(str(bs.getOffset())+" -> "+str(bs.getSize()))
+
+
+	texturesInfos = []
+	for i in range (0, numTex+1):
+		i = bs.read("H4B13H")
+		texturesInfos.append(i)
+		#print("texI : "+repr(i))
+
+	#print("cluts : "+str(bs.getOffset())+" -> "+str(bs.getSize()))
+	# cluts
+
+	texW = 128
+	texH = 512
+	cluts = []
+	for i in range (0, texW):
+		for j in range (0, texH):
+			cluts.append(bs.read('B')[0])
+	
+	pixmap = bytearray()
+	for j in range(0, len(cluts)):
+		pixmap += bytearray([ 0, 0, 0, cluts[j] ])
+	tex = NoeTexture("_tex_"+str(0), texW, texH, pixmap)
+	texList.append(tex)
+
+	#print("o : "+str(bs.getOffset())+" -> "+str(bs.getSize()))
+
+	texW = 32
+	texH = 16
+	cluts = []
+	for i in range (0, texW):
+		for j in range (0, texH):
+			cluts.append(bs.read('B')[0])
+	
+	pixmap = bytearray()
+	for j in range(0, len(cluts)):
+		pixmap += bytearray([ 0, 0, 0, cluts[j] ])
+	tex = NoeTexture("_tex_"+str(0), texW, texH, pixmap)
+	texList.append(tex)
+
+	return 1
+
 def koudelkaARCheck(data):
 	if len(data) < 8:
 		return 0
@@ -450,33 +719,97 @@ def koudelkaARCheck(data):
 		return 0
 	return 1
 def extractAR(fileName, fileLen, justChecking):
-	if fileLen < 28:
-		return 0
-
+	print("//-----------------------------------------------")
 	with open(fileName, "rb") as f:
-		nums = noeUnpack("4I4BI4B3I", f.read(40))
-		print("nums : "+str(nums))
+		nums = noeUnpack("3I", f.read(12))
+		for i in range (0, 124):
+			nums = noeUnpack("8B", f.read(8))
 
-		nums = noeUnpack("8H", f.read(16))
-		print("nums : "+str(nums))
+		#while True:
+		#	b = noeUnpack("4s", f.read(4))
+		#	if b == KOUDELKA_MODEL_HEADER:
+
+
 			
 		if justChecking:
 			return 1
 			
 		baseName = rapi.getExtensionlessName(rapi.getLocalFileName(fileName)).lower()
+	return 1
 
+def koudelkaPMFHeaderCheck(data):
+	if len(data) < 8:
+		return 0
+	bs = NoeBitStream(data)
+	h1, num1, num2, h2, header = bs.read("I2HI4s")
+	if header != KOUDELKA_PMF_HEADER:
+		return 0
+	return 1
+def koudelkaReadPMF(data, texList):
+	bs = NoeBitStream(data)
+	h = bs.read("I2HI")
+	header = bs.read("4s")[0]
+
+	nums = bs.read("12H")
+	print("PMF : "+repr(nums))
+
+	numTex = nums[0]
+	numBones = nums[4]
+
+	texW = 32
+	texH = 32
+
+	print(str(bs.getOffset())+' size : '+str(bs.getSize()))
+	for k in range(0, numTex):
+		# colors
+		colors = []
+		for i in range (0, 256):
+			colors.append(bs.readBits(16))
+
+		print(str(bs.getOffset())+' size : '+str(bs.getSize()))
+
+		
+		while True:
+			reso = bs.read("2H")
+			if reso == (0, 0) or (reso[0] > 512 or reso[1] > 512):
+				continue
+			else:
+				print(repr(reso))
+				break
+
+		# cluts
+		cluts = []
+		for i in range (0, reso[0]):
+			for j in range (0, reso[1]):
+				cluts.append(bs.read('B')[0])
+		
+		pixmap = bytearray()
+		for j in range(0, len(cluts)):
+			pixmap += bytearray(color16to32(colors[int(cluts[j])]))
+		tex = NoeTexture("_tex_"+str(0), reso[0], reso[1], pixmap)
+		texList.append(tex)
+		print(str(bs.getOffset())+' size : '+str(bs.getSize()))
+
+
+	for k in range(0, numBones):
+		nums = bs.read("6H")
+		print("Bone ? : "+repr(nums))
+
+	# TODO : effect model
+	#nums = bs.read("2H3I")
+	#print("B : "+repr(nums))
 
 	return 1
+
 
 def drawTexture(texW, texH, colors, cluts, idx = 0):
 	pixmap = bytearray()
 	for j in range(0, len(cluts)):
 		pixmap += bytearray(color16to32(colors[int(cluts[j])]))
-	
-	texName = rapi.getInputName()+"_tex_"+str(idx)+".png"
-	tex = NoeTexture(texName, texW, texH, pixmap)
-	if (rapi.checkFileExists(texName) != 1):
-		noesis.saveImageRGBA(texName, tex)
+	tex = NoeTexture("_tex_"+str(idx), texW, texH, pixmap)
+	#texName = rapi.getInputName()+"_tex_"+str(idx)+".png"
+	#if (rapi.checkFileExists(texName) != 1):
+	#	noesis.saveImageRGBA(texName, tex)
 
 	return tex
 def color16to32( c ):
